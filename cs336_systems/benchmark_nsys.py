@@ -68,16 +68,17 @@ def benchmark_model(
             print(f"{i}: PUSH")
         x, y = get_batch(dataset, batch_size=4, context_length=context_length, device=device.type)
 
-        preds = model(x)
-        loss = cross_entropy(preds, y)
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        profiler.stop()
+        with torch.autocast(device_type='cuda', dtype=torch.bfloat16):
+            preds = model(x)
+            loss = cross_entropy(preds, y)
+            loss.backward()
+            profiler.stop()
+            optimizer.step()
+            optimizer.zero_grad()
 
-        if i == num_warmup + 10 - 1:
-            # profiler.stop()
-            print(f"{i}: POP")
+            if i == num_warmup + 10 - 1:
+                # profiler.stop()
+                print(f"{i}: POP")
 
 
 if __name__ == "__main__":
