@@ -125,8 +125,8 @@ class FlashAttentionTritonFunc(torch.autograd.Function):
         num_batch, num_queries, d = Q.shape
         num_keys = K.shape[-2]
 
-        ctx.Q_TILE_SIZE = 32
-        ctx.K_TILE_SIZE = 16
+        ctx.Q_TILE_SIZE = 64
+        ctx.K_TILE_SIZE = 64
         ctx.is_causal = is_causal
 
         L = torch.zeros(num_batch, num_queries, device=Q.device)

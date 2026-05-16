@@ -16,13 +16,13 @@ class FlashAttentionFunc(torch.autograd.Function):
         num_k_tiles = num_keys // KEY_TILE_SIZE
         ctx.is_causal = is_causal
 
-        L = torch.zeros(num_batch, num_queries)
+        L = torch.zeros(num_batch, num_queries, device=Q.device)
         O = torch.zeros_like(Q)
         for i in range(num_q_tiles):
             Q_i = Q[:, i*QUERY_TILE_SIZE: (i+1)*QUERY_TILE_SIZE]
-            O_i = torch.zeros(num_batch, QUERY_TILE_SIZE, d)
-            l_i = torch.zeros(num_batch, QUERY_TILE_SIZE)
-            m_i = -torch.inf * torch.ones(num_batch, QUERY_TILE_SIZE)
+            O_i = torch.zeros(num_batch, QUERY_TILE_SIZE, d, device=Q.device)
+            l_i = torch.zeros(num_batch, QUERY_TILE_SIZE, device=Q.device)
+            m_i = -torch.inf * torch.ones(num_batch, QUERY_TILE_SIZE, device=Q.device)
 
             for j in range(num_k_tiles):
                 K_j = K[:, j*KEY_TILE_SIZE: (j+1)*KEY_TILE_SIZE]
@@ -34,7 +34,7 @@ class FlashAttentionFunc(torch.autograd.Function):
                 
                 pre_soft_scores = einsum(Q_i, K_j, "b tq d, b tk d -> b tq tk")/math.sqrt(d) + mask
                 row_max = torch.amax(pre_soft_scores, -1)
-                m_i_old = torch.tensor(m_i)
+                m_i_old = m_i.clone()
                 m_i = torch.maximum(m_i_old, row_max)
                 
                 unnormalized_softmax = torch.exp(pre_soft_scores - m_i[..., None])
