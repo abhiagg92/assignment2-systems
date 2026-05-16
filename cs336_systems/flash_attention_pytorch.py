@@ -14,6 +14,7 @@ class FlashAttentionFunc(torch.autograd.Function):
         num_keys = K.shape[-2]
         num_q_tiles = num_queries // QUERY_TILE_SIZE
         num_k_tiles = num_keys // KEY_TILE_SIZE
+        ctx.is_causal = is_causal
 
         L = torch.zeros(num_batch, num_queries)
         O = torch.zeros_like(Q)
@@ -26,8 +27,12 @@ class FlashAttentionFunc(torch.autograd.Function):
             for j in range(num_k_tiles):
                 K_j = K[:, j*KEY_TILE_SIZE: (j+1)*KEY_TILE_SIZE]
                 V_j = V[:, j*KEY_TILE_SIZE: (j+1)*KEY_TILE_SIZE]
+
+                mask = torch.zeros(num_batch, QUERY_TILE_SIZE, KEY_TILE_SIZE, device=Q.device)
+                if is_causal:
+                    mask = -1e6*torch.triu(torch.ones_like(mask), diagonal=1)
                 
-                pre_soft_scores = einsum(Q_i, K_j, "b tq d, b tk d -> b tq tk")/math.sqrt(d)
+                pre_soft_scores = einsum(Q_i, K_j, "b tq d, b tk d -> b tq tk")/math.sqrt(d) + mask
                 row_max = torch.amax(pre_soft_scores, -1)
                 m_i_old = torch.tensor(m_i)
                 m_i = torch.maximum(m_i_old, row_max)
@@ -43,10 +48,31 @@ class FlashAttentionFunc(torch.autograd.Function):
             L[:, i*QUERY_TILE_SIZE: (i+1)*QUERY_TILE_SIZE] = L_i
             O[:, i*QUERY_TILE_SIZE: (i+1)*QUERY_TILE_SIZE] = O_i
         
-        ctx.save_for_backward(L, Q, K, V, O)
+        ctx.save_for_backward(Q, K, V, L, O)
         return O
 
     
     @staticmethod
-    def backward(ctx, *grad_outputs):
-        raise NotImplementedError
+    def backward(ctx, grad_output):
+        Q, K, V, L, O = ctx.saved_tensors
+        batch, num_q, d_model = Q.shape
+        num_k = K.shape[1]
+        is_causal = ctx.is_causal
+        
+        D = (O*grad_output).sum(-1)
+        mask = torch.zeros(batch, num_q, num_k, device=Q.device)
+        if is_causal:
+            mask = -1e6*torch.triu(torch.ones_like(mask), diagonal=1)
+        
+        scale = 1/math.sqrt(d_model)
+        S = einsum(Q, K, "b tq d, b tk d -> b tq tk")*scale + mask
+
+        P = torch.exp(S - L[..., None])
+
+        dV = einsum(P, grad_output, "b tq tk, b tq d -> b tk d")
+        dP = einsum(grad_output, V, "b tq d, b tk d -> b tq tk")
+        dS = P*(dP - D[..., None])
+        dQ = einsum(dS, K, "b tq tk, b tk d -> b tq d")*scale
+        dK = einsum(dS, Q, "b tq tk, b tq d -> b tk d")*scale
+
+        return dQ, dK, dV, None

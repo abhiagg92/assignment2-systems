@@ -4,6 +4,8 @@ import torch
 import triton
 import triton.language as tl
 
+from einops import einsum
+
 @triton.jit
 def _create_diagonal_matrix(size, values):
     rows = tl.arange(0, size)[:, None]
@@ -145,9 +147,29 @@ class FlashAttentionTritonFunc(torch.autograd.Function):
             K_TILE_SIZE=ctx.K_TILE_SIZE
         )
 
-        ctx.save_for_backward(L, Q, K, V, O)
+        ctx.save_for_backward(Q, K, V, L, O)
         return O
 
     @staticmethod
-    def backward(ctx, *grad_outputs):
-        raise NotImplementedError
+    def backward(ctx, grad_output):
+        Q, K, V, L, O = ctx.saved_tensors
+        batch, seq_len, d_model = Q.shape
+        is_causal = ctx.is_causal
+        
+        D = (O*grad_output).sum(-1)
+        mask = torch.zeros(batch, seq_len, seq_len, device=Q.device)
+        if is_causal:
+            mask = -1e6*torch.triu(torch.ones_like(mask), diagonal=1)
+        
+        scale = 1/math.sqrt(d_model)
+        S = einsum(Q, K, "b tq d, b tk d -> b tq tk")*scale + mask
+
+        P = torch.exp(S - L[..., None])
+
+        dV = einsum(P, grad_output, "b tq tk, b tq d -> b tk d")
+        dP = einsum(grad_output, V, "b tq d, b tk d -> b tq tk")
+        dS = P*(dP - D[..., None])
+        dQ = einsum(dS, K, "b tq tk, b tk d -> b tq d")*scale
+        dK = einsum(dS, Q, "b tq tk, b tq d -> b tk d")*scale
+
+        return dQ, dK, dV, None
