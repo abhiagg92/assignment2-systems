@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from cs336_systems.flash_attention_pytorch import FlashAttentionFunc
-from cs336_systems.flash_attention_triton import FlashAttentionTritonFunc
+from cs336_systems.flash_attention.flash_attention_pytorch import FlashAttentionFunc
+from cs336_systems.flash_attention.flash_attention_triton import FlashAttentionTritonFunc
 
 def get_flashattention_autograd_function_pytorch() -> type:
     """

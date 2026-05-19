@@ -2,8 +2,8 @@ from triton.testing import do_bench
 import torch
 from enum import Enum
 
-from cs336_systems.flash_attention_triton import FlashAttentionTritonFunc
-from cs336_systems.flash_attention_pytorch import FlashAttentionFunc
+from cs336_systems.flash_attention.flash_attention_triton import FlashAttentionTritonFunc
+from cs336_systems.flash_attention.flash_attention_pytorch import FlashAttentionFunc
 from cs336_basics.model import scaled_dot_product_attention
 
 
