@@ -8,16 +8,8 @@ class DDPModel(nn.Module):
         super().__init__()
         self.module = base_model
 
-        model_params = []
         for param in self.module.parameters():
-            model_params.append(param.data)
-
-        flat_params = torch._utils._flatten_dense_tensors(model_params)
-        dist.broadcast(flat_params, src=0, async_op=False)
-        model_params = torch._utils._unflatten_dense_tensors(flat_params, model_params)
-        
-        for param, model_param in zip(self.module.parameters(), model_params):
-            param.data = model_param
+            dist.broadcast(param.data, src=0, async_op=False)
 
     def forward(self, x):
         return self.module(x)
