@@ -5,6 +5,7 @@ import torch
 from cs336_systems.flash_attention.flash_attention_pytorch import FlashAttentionFunc
 from cs336_systems.flash_attention.flash_attention_triton import FlashAttentionTritonFunc
 from cs336_systems.ddp.ddp_model import DDPModel
+from cs336_systems.ddp.ddp_optimizer import DDPOptimizer
 
 def get_flashattention_autograd_function_pytorch() -> type:
     """
@@ -135,4 +136,4 @@ def get_sharded_optimizer(params, optimizer_cls: type[torch.optim.Optimizer], **
     Returns:
         Instance of sharded optimizer.
     """
-    raise NotImplementedError
+    return DDPOptimizer(params, optimizer_cls, **kwargs)
